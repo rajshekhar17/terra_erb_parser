@@ -1,0 +1,4 @@
+# ignore .terraform folder
+.terraform
+.kitchen/
+.kitchen.local.yml

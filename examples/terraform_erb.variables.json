@@ -1,0 +1,346 @@
+{
+  "provider": {
+    "aws": {
+      "region": "eu-west-1",
+      "secret_key": "",
+      "access_key": ""
+    }
+  },
+  "locals": {
+    "az_count": "${length(var.azs)}",
+    "newbits": "${max(4, local.az_count)}"
+  },
+  "resource": {
+    "aws_vpc": {
+      "3_tier": {
+        "cidr_block": "10.0.0.0/16",
+        "instance_tenancy": "dedicated",
+        "tags": {
+          "Name": "vpc-${var.tag}"
+        }
+      }
+    },
+    "aws_internet_gateway": {
+      "main": {
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "tags": {
+          "Name": "gw-${var.tag}"
+        }
+      }
+    },
+    "aws_subnet": {
+      "app": {
+        "count": "${length(var.azs)}",
+        "availability_zone_id": "${element(var.azs, count.index)}",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "cidr_block": "${cidrsubnet(var.subnet, local.newbits, 1*count.index )}",
+        "tags": {
+          "Name": "sn-app-${element(var.azs, count.index)}"
+        }
+      },
+      "db": {
+        "count": "${length(var.azs)}",
+        "availability_zone_id": "${element(var.azs, count.index)}",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "cidr_block": "${cidrsubnet(var.subnet, local.newbits, 2*count.index )}",
+        "tags": {
+          "Name": "sn-db-${element(var.azs, count.index)}"
+        }
+      },
+      "tools": {
+        "count": "${length(var.azs)}",
+        "availability_zone_id": "${element(var.azs, count.index)}",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "cidr_block": "${cidrsubnet(var.subnet, local.newbits, 3*count.index )}",
+        "tags": {
+          "Name": "sn-tools-${element(var.azs, count.index)}"
+        }
+      },
+      "web": {
+        "count": "${length(var.azs)}",
+        "availability_zone_id": "${element(var.azs, count.index)}",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "cidr_block": "${cidrsubnet(var.subnet, local.newbits, 4*count.index )}",
+        "tags": {
+          "Name": "sn-web-${element(var.azs, count.index)}"
+        }
+      }
+    },
+    "aws_route_table": {
+      "public": {
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "route": {
+          "cidr_block": "0.0.0.0/24",
+          "gateway_id": "${aws_internet_gateway.main.id}"
+        },
+        "tags": {
+          "Name": "public_rt-${var.tag}"
+        }
+      }
+    },
+    "aws_route_table_association": {
+      "web": {
+        "subnet_id": "${element(aws_subnet.web.*.id, count.index)}",
+        "route_table_id": "${aws_route_table.public.id}"
+      },
+      "tools": {
+        "subnet_id": "${element(aws_subnet.tools.*.id, count.index)}",
+        "route_table_id": "${aws_route_table.public.id}"
+      }
+    },
+    "aws_security_group": {
+      "web_80": {
+        "name": "allow web network",
+        "description": "Allow web inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 80,
+          "to_port": 80,
+          "protocol": "TCP",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "web80_sg"
+        }
+      },
+      "web_433": {
+        "name": "allow web network",
+        "description": "Allow web inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 433,
+          "to_port": 433,
+          "protocol": "TCP",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "web433_sg"
+        }
+      },
+      "app_80": {
+        "name": "allow traffic from web subnet network",
+        "description": "Allow web inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "${var.PublicIP}/32"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "app80_sg"
+        }
+      },
+      "app_433": {
+        "name": "allow traffic from web subnet network",
+        "description": "Allow web inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "${var.PublicIP}/32"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "app433_sg"
+        }
+      },
+      "db_3306": {
+        "name": "db ingress for 3306",
+        "description": "Allow web inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 3306,
+          "to_port": 3306,
+          "protocol": "TCP",
+          "cidr_blocks": [
+            "${aws_subnet.app.*.cidr_block}",
+            "${aws_subnet.tools.*.cidr_block}",
+            "${var.PublicIP}/32"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "db3306_sg"
+        }
+      },
+      "db_1433": {
+        "name": "db ingress for 1433",
+        "description": "Allow web inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 1433,
+          "to_port": 1433,
+          "protocol": "TCP",
+          "cidr_blocks": [
+            "${aws_subnet.app.*.cidr_block}",
+            "${aws_subnet.tools.*.cidr_block}",
+            "${var.PublicIP}/32"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "db1433_sg"
+        }
+      },
+      "db_5432": {
+        "name": "db ingress for 5432",
+        "description": "Allow web inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 5432,
+          "to_port": 5432,
+          "protocol": "TCP",
+          "cidr_blocks": [
+            "${aws_subnet.app.*.cidr_block}",
+            "${aws_subnet.tools.*.cidr_block}",
+            "${var.PublicIP}/32"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "db5432_sg"
+        }
+      },
+      "tools": {
+        "name": "allow tools network",
+        "description": "Allow tools inbound traffic",
+        "vpc_id": "${aws_vpc.3_tier.id}",
+        "ingress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "TCP",
+          "cidr_blocks": [
+            "10.0.0.0/16",
+            "${var.PublicIP}/32"
+          ]
+        },
+        "egress": {
+          "from_port": 0,
+          "to_port": 0,
+          "protocol": "-1",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ]
+        },
+        "tags": {
+          "Name": "tools_sg"
+        }
+      }
+    }
+  },
+  "variable": {
+    "tag": {
+      "default": "test"
+    },
+    "subnet": {
+      "default": "10.0.0.0/16"
+    },
+    "azs": {
+      "description": "Run the EC2 Instances in these Availability Zones",
+      "type": "list",
+      "default": [
+        "euw1-az1",
+        "euw1-az3",
+        "euw1-az2"
+      ]
+    },
+    "region": {
+      "default": "eu-west-1"
+    },
+    "PublicIP": {
+      "default": "10.12.12.1"
+    },
+    "db_ports": {
+      "default": [
+        "3306",
+        "1433",
+        "5432"
+      ]
+    },
+    "web_ports": {
+      "default": [
+        "80",
+        "433"
+      ]
+    },
+    "app_ports": {
+      "default": [
+        "80",
+        "433"
+      ]
+    },
+    "provision_acl": {
+      "default": true
+    },
+    "zones": {
+      "default": [
+        "app",
+        "db",
+        "tools",
+        "web"
+      ]
+    }
+  }
+}
